@@ -165,7 +165,7 @@ impl NetworkConfig {
             let storage = backend.into();
             Encryptor::new(storage)
         } else {
-            Encryptor::for_testing()
+            Encryptor::encryptor_for_testing()
         }
     }
 

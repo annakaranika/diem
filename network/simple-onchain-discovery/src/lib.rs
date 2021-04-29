@@ -294,7 +294,7 @@ mod tests {
         let listener = ConfigurationChangeListener::new(
             network_context.clone(),
             pubkey,
-            Encryptor::for_testing(),
+            Encryptor::encryptor_for_testing(),
             conn_mgr_reqs_tx,
             reconfig_rx,
         );
@@ -346,7 +346,7 @@ mod tests {
         let validator_address =
             NetworkAddress::mock().append_prod_protos(pubkey, HANDSHAKE_VERSION);
         let addresses = vec![validator_address];
-        let encryptor = Encryptor::for_testing();
+        let encryptor = Encryptor::encryptor_for_testing();
         let encrypted_addresses = encryptor.encrypt(&addresses, peer_id, 0).unwrap();
         let encoded_addresses = bcs::to_bytes(&addresses).unwrap();
         let validator = ValidatorInfo::new(

@@ -50,11 +50,17 @@ impl Encryptor {
         }
     }
 
-    /// This generates an Encryptor for use in default / testing scenarios where (proper)
-    /// encryption is not necessary.
-    pub fn for_testing() -> Self {
+    /// This generates an empty encryptor for use in scenarios where encryption is not necessary.
+    /// Any encryption operations (e.g., encrypt / decrypt) will return errors.
+    pub fn empty_encryptor() -> Self {
         let storage = Storage::InMemoryStorage(diem_secure_storage::InMemoryStorage::new());
-        let mut encryptor = Encryptor::new(storage);
+        Encryptor::new(storage)
+    }
+
+    /// This generates an encryptor for use in testing scenarios. The encryptor is
+    /// initialized with a test network encryption key.
+    pub fn encryptor_for_testing() -> Self {
+        let mut encryptor = Self::empty_encryptor();
         encryptor.initialize_for_testing().unwrap();
         encryptor
     }
@@ -246,7 +252,7 @@ mod tests {
     #[test]
     fn cache_test() {
         // Prepare some initial data and verify e2e
-        let mut encryptor = Encryptor::for_testing();
+        let mut encryptor = Encryptor::encryptor_for_testing();
         let addr = std::str::FromStr::from_str("/ip4/10.0.0.16/tcp/80").unwrap();
         let addrs = vec![addr];
         let account = AccountAddress::random();
