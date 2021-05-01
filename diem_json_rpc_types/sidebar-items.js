@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Id",""],["Method",""]],"mod":[["constants","Defines constants for enum type values See the following Diem JSON-RPC response type documents for more details:"],["errors",""],["proto",""],["request",""],["response",""],["views",""]]});
