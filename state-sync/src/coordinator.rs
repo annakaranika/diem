@@ -90,6 +90,9 @@ pub(crate) struct StateSyncCoordinator<T> {
     // peer will be notified about new chunk of transactions if it's available before expiry time
     subscriptions: HashMap<PeerNetworkId, PendingRequestInfo>,
     executor_proxy: T,
+    /// List of the latest known_version and duplicate count
+    /// for all validators in communication with current node
+    known_versions: HashMap<PeerNetworkId, (u64, u64)>,
 }
 
 impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
@@ -136,6 +139,7 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
             target_ledger_info: None,
             initialization_listener: None,
             executor_proxy,
+            known_versions: HashMap::new(),
         })
     }
 
@@ -657,7 +661,7 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
 
         // Verify the chunk request is valid before trying to process it. If it's invalid,
         // penalize the peer's score.
-        if let Err(error) = self.verify_chunk_request_is_valid(&request) {
+        if let Err(error) = self.verify_chunk_request_is_valid(&peer, &request) {
             self.request_manager.process_invalid_chunk_request(&peer);
             return Err(error);
         }
@@ -681,7 +685,10 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
         }
     }
 
-    fn verify_chunk_request_is_valid(&mut self, request: &GetChunkRequest) -> Result<(), Error> {
+    fn verify_chunk_request_is_valid(&mut self,
+        peer: &PeerNetworkId,
+        request: &GetChunkRequest
+    ) -> Result<(), Error> {
         // Ensure request versions are correctly formed
         if let Some(target_version) = request.target.version() {
             if target_version < request.known_version {
@@ -705,6 +712,23 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
             return Err(Error::InvalidChunkRequest(
                 "Chunk request limit is 0. Discarding request.".into(),
             ));
+        }
+
+        // Ensure the request is not a duplicate
+        if self.known_versions.contains_key(peer) {
+            let (known_version, dup_counter) = self.known_versions[peer];
+            if request.known_version <= known_version && dup_counter < 5 {
+                self.known_versions.insert(peer.clone(), (request.known_version + request.limit, 0));
+                return Err(Error::InvalidChunkRequest(
+                    "Chunk request is duplicate.".into(),
+                ));
+            }
+            else {
+                self.known_versions.insert(peer.clone(), (request.known_version + request.limit, dup_counter+1));
+            }
+        }
+        else {
+            self.known_versions.insert(peer.clone(), (request.known_version + request.limit, 0));
         }
 
         // Ensure the timeout is not zero
