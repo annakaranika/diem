@@ -717,18 +717,20 @@ impl<T: ExecutorProxyTrait> StateSyncCoordinator<T> {
         // Ensure the request is not a duplicate
         if self.known_versions.contains_key(peer) {
             let (known_version, dup_counter) = self.known_versions[peer];
-            if request.known_version <= known_version && dup_counter < 5 {
-                self.known_versions.insert(peer.clone(), (request.known_version + request.limit, 0));
-                return Err(Error::InvalidChunkRequest(
-                    "Chunk request is duplicate.".into(),
-                ));
+            if request.known_version <= known_version {
+                self.known_versions.insert(peer.clone(), (request.known_version, dup_counter + 1));
+                if dup_counter >= 4 {
+                    return Err(Error::InvalidChunkRequest(
+                        "Chunk request is duplicate.".into(),
+                    ));
+                }
             }
             else {
-                self.known_versions.insert(peer.clone(), (request.known_version + request.limit, dup_counter+1));
+                self.known_versions.insert(peer.clone(), (request.known_version, 0));
             }
         }
         else {
-            self.known_versions.insert(peer.clone(), (request.known_version + request.limit, 0));
+            self.known_versions.insert(peer.clone(), (request.known_version, 0));
         }
 
         // Ensure the timeout is not zero
@@ -2080,6 +2082,68 @@ mod tests {
             &peer_network_id,
             &chunk_requests,
         );
+    }
+
+    #[test]
+    fn test_duplicate_chunk_request_messages() {
+        // Create a coordinator for a validator node
+        let mut validator_coordinator = test_utils::create_validator_coordinator();
+
+        // Constants for the chunk requests
+        let peer_network_id = PeerNetworkId::random();
+        let known_version = 0;
+        let current_epoch = 0;
+        let chunk_limit = 250;
+        let target_version = 200;
+        let timeout_ms = 1000;
+        
+        // Create one chunk requests to repeatedly try to verify
+        let chunk_requests = create_chunk_requests(
+            known_version,
+            current_epoch,
+            chunk_limit,
+            target_version,
+            timeout_ms,
+        );
+
+        // Count invalidated chunk requests
+        let mut invalid_counter = 0;
+        for _ in 0..100 {
+            let result = block_on(validator_coordinator.process_chunk_message(
+                peer_network_id.network_id(),
+                peer_network_id.peer_id(),
+                chunk_requests[1].clone(),
+            ));
+            if matches!(result, Err(Error::InvalidChunkRequest(..))) {
+                invalid_counter += 1;
+            }
+        }
+        println!("dumb attack: {}% invalid chunk requests detected!", invalid_counter);
+
+        let mut invalid_counter = 0;
+        let mut known_version = 0;
+        for i in 0..100 {
+            if i % 5 == 0 {
+                known_version += 1;
+            }
+            let chunk_requests = create_chunk_requests(
+                known_version,
+                current_epoch,
+                chunk_limit,
+                target_version,
+                timeout_ms,
+            );
+
+            let result = block_on(validator_coordinator.process_chunk_message(
+                peer_network_id.network_id(),
+                peer_network_id.peer_id(),
+                chunk_requests[1].clone(),
+            ));
+            if matches!(result, Err(Error::InvalidChunkRequest(..))) {
+                invalid_counter += 1;
+            }
+        }
+        println!("smart attack: {}% invalid chunk requests detected!", invalid_counter);
     }
 
     #[test]
